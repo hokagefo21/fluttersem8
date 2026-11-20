@@ -1,31 +1,41 @@
-# SRS 8 — Post Explorer
+# SRS 8: Post Explorer
 
-Запуск: flutter pub get, flutter pub run build_runner build, flutter run.
-Главный экран — посты JSONPlaceholder. Кнопка пользователя открывает регистрацию Firebase из лабораторной №7 (её инструкция сохранена в README-LAB7.md).
+Post Explorer browses JSONPlaceholder posts, loads comments and authors, and lets users create posts locally. The profile icon opens the Firebase registration form from [Lab 7](README-LAB7.md).
 
-## Архитектура
-UI → PostsController (ChangeNotifier) → PostRepository → PostApi (Retrofit) → единый Dio → JSONPlaceholder.
-PostCache использует SharedPreferences. Модели Post, Comment, User и вложенный Address сериализуются json_serializable; файлы .g.dart сгенерированы build_runner.
-Dio задаёт URL, таймауты, технические заголовки и LogInterceptor. AppException различает offline, timeout, client (4xx), server (5xx), json и unknown.
+## Run
 
-## Запросы Retrofit
-GET /posts (_page, _limit); GET /posts?userId=... (_page, _limit); GET /posts/{id}; GET /posts/{id}/comments; GET /users; GET /users/{id}; POST /posts.
-Пост, комментарии и автор на экране деталей загружаются одновременно.
+```sh
+flutter pub get
+flutter pub run build_runner build
+flutter run
+```
 
-## Поведение
-При первом запуске: загрузка первой страницы (10 постов), индикатор или понятная ошибка с повтором.
-При повторном открытии: сохранённые посты появляются сразу с пометкой кэша; затем выполняется обновление.
-Без интернета: последний успешный кэш остаётся виден, сетевая ошибка его не удаляет. Некорректный кэш игнорируется; серверный результат можно загрузить заново.
-Для каждого автора отдельный ключ кэша. При смене автора сбрасываются страницы, а ответы старого поколения запросов игнорируются. Это исключает смешивание разных фильтров.
-Поиск локальный, только по уже загруженным заголовкам; ограничение подписано в интерфейсе. Есть сортировка по ID и сброс фильтров.
-Прокрутка загружает следующую страницу. Повторная загрузка блокируется; ошибки следующей страницы показываются отдельно с кнопкой повтора. Pull-to-refresh обновляет список.
-Создание проверяет title (5–100), body (10–1000) и выбор автора, блокирует повторное нажатие. Ответ POST показывается как JSON. JSONPlaceholder не сохраняет изменения: созданный пост помещается в постоянный локальный список с отрицательным уникальным ID и пометкой «Создан локально». Серверный ответ сохраняет свой ID 101 на экране результата.
+## Architecture and API
 
-## Тесты
-flutter test test/posts_test.dart — 11 проверок: сериализация в обе стороны, некорректный JSON, вложенная модель, загрузка через Retrofit/Repository, HTTP 500, фильтрация, блокировка дублей страниц, кэш при ошибке, POST через собственный mock-адаптер Dio, отбрасывание устаревших страниц.
-Дополнительно сохранены 3 теста регистрации лабораторной №7.
-Полный вывод проверок: docs/srs8-tests.txt. Тесты не зависят от интернета.
+The screens observe `PostsController` (ChangeNotifier). The controller calls `PostRepository`, which combines a SharedPreferences cache with a Retrofit client. A single Dio instance sets the base URL, timeouts, request headers, and logging interceptor. `AppException` distinguishes offline, timeout, client (4xx), server (5xx), JSON, and unknown errors.
 
-## Для защиты
-Dio выполняет HTTP-запросы и поддерживает interceptors. Retrofit генерирует типизированный клиент из аннотаций. json_serializable генерирует преобразование моделей JSON. Repository отделяет сетевую реализацию и кэш от интерфейса. ChangeNotifier управляет раздельными состояниями первичной загрузки, обновления, подгрузки и ошибки страницы. У формы своё состояние отправки.
-Git-тег srs-8 отмечает выполненное задание до изменений SRS 9.
+Retrofit generates the typed API client. `json_serializable` converts Post, Comment, User, and nested Address models to and from JSON. Build Runner generates the `.g.dart` files.
+
+| Request | Purpose |
+| --- | --- |
+| `GET /posts` with `_page`, `_limit` and optional `userId` | Fetch a page of posts, optionally filtered by author |
+| `GET /posts/{id}` | Fetch a post |
+| `GET /posts/{id}/comments` | Fetch its comments |
+| `GET /users`, `GET /users/{id}` | Fetch authors or one author's details |
+| `POST /posts` | Submit a post and display the JSON response |
+
+The detail screen requests the post, its comments, and its author concurrently.
+
+## Using the app
+
+- The first page contains 10 posts. The list shows a loading indicator and offers retry on failure. On later visits it displays cached posts immediately, marks them as cached, and refreshes them.
+- Each author has a separate cache key. Switching authors resets pagination and discards outdated responses. Network errors preserve the last successful cache. The app ignores malformed cache entries and can fetch fresh data.
+- Search matches titles among loaded posts. The screen explains this limit and supports sorting by ID and resetting filters.
+- Scroll to load the next page or pull to refresh. The controller tracks initial loading, refresh, and pagination separately. It blocks duplicate requests and lets users retry a failed page.
+- To create a post, select an author and enter a title of 5 to 100 characters and a body of 10 to 1,000 characters. The form guards against duplicate submissions. JSONPlaceholder returns an example response with ID 101. Because the service does not persist writes, the app saves a separate local copy with a unique negative ID and labels it as locally created.
+
+## Tests and assignment history
+
+Run `flutter test test/posts_test.dart` for 11 offline tests covering JSON parsing and round trips, nested models, invalid JSON, repository and Retrofit requests, HTTP 500, author filtering, page deduplication, offline cache, POST through a mock Dio adapter, and stale responses. The project also includes three registration tests from Lab 7. [Full test output](docs/srs8-tests.txt)
+
+The `srs-8` tag in the Post Explorer development history marks the stage before the SRS 9 changes.
